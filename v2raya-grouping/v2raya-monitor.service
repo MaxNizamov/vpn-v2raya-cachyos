@@ -1,0 +1,22 @@
+[Unit]
+Description=v2rayA Health-Check & Failover Monitor
+Documentation=https://github.com/MaxNizamov/vpn-v2raya-cachyos
+After=network-online.target v2raya.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# %h expands to the user's HOME in systemd user units.
+# Point this at wherever you cloned the repo.
+ExecStart=/usr/bin/env python3 -u %h/Dev/vpn-v2raya-cachyos/v2raya-grouping/v2raya-grouping.py monitor --watch --interval 300
+# -u = unbuffered stdout/stderr, so logs reach journald in real time.
+Environment=PYTHONUNBUFFERED=1
+# Tunables (override via systemctl --user edit):
+# Environment=V2RAYA_THRESHOLD_MS=2000
+# Environment=V2RAYA_MIN_IMPROVEMENT_PCT=30
+# Environment=V2RAYA_SAMPLE_SIZE=8
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=default.target

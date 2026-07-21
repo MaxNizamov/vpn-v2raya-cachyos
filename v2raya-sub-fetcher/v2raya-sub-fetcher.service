@@ -1,0 +1,30 @@
+[Unit]
+Description=v2rayA Subscription Fetcher (Hiddify UA proxy)
+Documentation=https://github.com/MaxNizamov/vpn-v2raya-cachyos
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# %h expands to the user's HOME in systemd user units.
+# Point this at wherever you cloned the repo.
+ExecStart=/usr/bin/env python3 %h/Dev/vpn-v2raya-cachyos/v2raya-sub-fetcher/sub-fetcher.py
+# All knobs are overridable via environment; defaults baked into the script.
+Environment=LISTEN_HOST=127.0.0.1
+Environment=LISTEN_PORT=8798
+Environment=USER_AGENT=Hiddify
+Environment=FETCH_TIMEOUT=20
+Environment=MIN_REFRESH_INTERVAL=60
+Environment=LOG_LEVEL=INFO
+# YOU MUST set UPSTREAM_URL to your subscription URL via override:
+#   systemctl --user edit v2raya-sub-fetcher
+#   [Service]
+#   Environment=UPSTREAM_URL=https://your-provider/sub/<your-uuid>
+# (The default below is intentionally empty — no upstream baked in.)
+Environment=UPSTREAM_URL=
+# Environment=CACHE_FILE=%h/.local/share/v2raya-sub-fetcher/last_sub.txt
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

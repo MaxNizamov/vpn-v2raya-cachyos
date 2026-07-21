@@ -1,0 +1,22 @@
+# Secrets — never commit
+.env
+*.env
+v2raya-grouping/.env
+
+# Local subscription snapshots (contain server credentials)
+sub-skippnet.base64
+sub-skippnet.uris
+last_sub.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Old README kept locally only
+README.old.md

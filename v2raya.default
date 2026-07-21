@@ -1,0 +1,35 @@
+# /etc/default/v2raya
+# v2rayA runtime configuration.
+# Installed by: v2raya-install-system.sh from this repo.
+#
+# This file is read by v2raya.service via EnvironmentFile=-.
+# Only uncommented V2RAYA_* lines are applied.
+
+# Listening address. 0.0.0.0:2017 exposes the web UI on all interfaces;
+# use 127.0.0.1:2017 to restrict it to localhost.
+V2RAYA_ADDRESS=127.0.0.1:2017
+
+# Use Xray-core as the backend instead of v2ray-core.
+# /usr/sbin/xray is provided by the `xray-bin` AUR package.
+V2RAYA_V2RAY_BIN=/usr/sbin/xray
+
+# v2rayA configuration directory (stores subscriptions, nodes, etc.).
+V2RAYA_CONFIG=/etc/v2raya
+
+# Shared assets directory used by xray for geoip.dat / geosite.dat.
+# Note: xray-bin does NOT ship assets; we reuse the ones from the
+# `v2ray` package at /usr/share/v2ray/ (geoip.dat + geosite.dat).
+V2RAYA_V2RAY_ASSETSDIR=/usr/share/v2ray
+
+# How long to wait for the xray core to start, in seconds.
+V2RAYA_CORE_STARTUP_TIMEOUT=30
+
+# IPv6 support: auto / on / off. Keep `auto` unless IPv6 is known good.
+V2RAYA_IPV6_SUPPORT=auto
+
+# Use nftables for transparent proxy (CachyOS/Arch default is nftables).
+V2RAYA_NFTABLES_SUPPORT=auto
+
+V2RAYA_LOG_FILE=/var/log/v2raya/v2raya.log
+V2RAYA_LOG_LEVEL=info
+V2RAYA_LOG_MAX_DAYS=3
