@@ -660,6 +660,12 @@ def main() -> int:
 
     pc = sub.add_parser("setup", help="apply v2rayA settings: TUN + DoH + RoutingA")
 
+    pb = sub.add_parser("balancer", help="generate multi-server balancer overlay for core-hook")
+    pb.add_argument("--max-servers", type=int, default=6,
+                    help="max servers per balancer group (default 6)")
+    pb.add_argument("--install", action="store_true",
+                    help="copy overlay to /etc/v2raya/balancer-overlay.json (needs sudo)")
+
     args = p.parse_args()
 
     if not args.username or not args.password:
@@ -681,6 +687,9 @@ def main() -> int:
         return cmd_monitor(api, args)
     if args.cmd == "setup":
         return cmd_setup(api, args)
+    if args.cmd == "balancer":
+        from balancer import cmd_generate_balancer
+        return cmd_generate_balancer(classify, args)
     return 2
 
 

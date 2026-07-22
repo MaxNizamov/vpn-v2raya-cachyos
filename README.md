@@ -225,6 +225,69 @@ curl http://127.0.0.1:8798/force-refresh
 journalctl --user -u v2raya-monitor -f
 ```
 
+## Multi-Server Balancing (core-hook)
+
+Since v2rayA+Xray only allows **one server per outbound**, a core-hook
+injects balancers + observatory into the generated xray config before
+every startup.
+
+### Setup
+
+```bash
+cd v2raya-grouping
+
+# 1. Classify servers + generate balancer overlay
+python3 v2raya-grouping.py balancer --max-servers 4
+
+# 2. Install overlay + hook + enable in /etc/default/v2raya
+./install-balancer.sh
+
+# 3. (done automatically) v2rayA restarts, hook injects balancers,
+#    xray starts with N servers per group + observatory + leastping
+```
+
+### How it works
+
+```
+# Before (v2rayA only):
+outbounds: [proxy]          → 1 server, no balancing
+
+# After (with hook):
+outbounds: [proxy, proxy_0, proxy_1, proxy_2, proxy_3]
+balancers: [{tag: proxy, selector: [proxy, proxy_0, ...], leastping}]
+observatory: {observers: [{tag: proxy, subjectSelector: [...], probe every 5m}]}
+routing:   balancerTag: proxy  (rewritten from outboundTag)
+```
+
+### IP indicator behaviour with leastping
+
+- Observatory probes all servers every 5 minutes
+- New TCP connections route through the **lowest-ping** server
+- Most of the time the IP indicator shows ONE stable IP
+- When the current best server degrades, new connections silently switch
+  to the next best — **no tun0 restart, no disconnection**
+- Different browser tabs *may* show different IPs during transition
+
+### Refreshing after subscription update
+
+```bash
+python3 v2raya-grouping.py balancer --install --max-servers 4
+sudo systemctl restart v2raya
+```
+
+### Troubleshooting
+
+If xray fails to start after hook install:
+```bash
+# Validate the merged config:
+pkexec cat /etc/v2raya/config.json | python3 -c "import json,sys;c=json.load(sys.stdin);print('balancers:',len(c.get('routing',{}).get('balancers',[])),'observers:',len(c.get('observatory',{}).get('observers',[])))"
+# Restore backup:
+sudo mv /etc/v2raya/config.json.bak /etc/v2raya/config.json
+# Disable hook temporarily:
+sudo sed -i 's/^V2RAYA_CORE_HOOK=/#V2RAYA_CORE_HOOK=/' /etc/default/v2raya
+sudo systemctl restart v2raya
+```
+
 ## Tunables (systemd overrides)
 
 ```bash
