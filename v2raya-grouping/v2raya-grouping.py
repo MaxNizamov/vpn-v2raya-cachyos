@@ -97,7 +97,7 @@ class V2rayA:
         self.verbose = verbose
         self.token: str | None = None
 
-    def _req(self, method: str, path: str, body=None, query=None) -> dict:
+    def _req(self, method: str, path: str, body=None, query=None, _allow_relogin: bool = True) -> dict:
         url = f"{self.base}{path}"
         if query:
             url += "?" + urllib.parse.urlencode(query)
@@ -120,6 +120,24 @@ class V2rayA:
         if self.verbose:
             print(f"  {method} {path} -> code={payload.get('code')} msg={payload.get('message')}")
         if payload.get("code") != "SUCCESS":
+            # Auto re-login on token expiry / invalidation, then retry once.
+            msg = (payload.get("message") or "").lower()
+            is_auth_err = (
+                payload.get("code") == "FAIL" and (
+                    "token" in msg or "unauthorized" in msg or "auth" in msg
+                    or "session" in msg or "login" in msg
+                    or payload.get("message") == "no token present in request"
+                )
+            )
+            if _allow_relogin and is_auth_err:
+                if self.verbose:
+                    print(f"  (auth error, re-login and retry)")
+                try:
+                    self.login()
+                except RuntimeError:
+                    pass  # re-login failed: fall through to raise original error
+                else:
+                    return self._req(method, path, body, query, _allow_relogin=False)
             raise RuntimeError(f"{method} {path} failed: {payload.get('message')}")
         return payload.get("data") or {}
 
