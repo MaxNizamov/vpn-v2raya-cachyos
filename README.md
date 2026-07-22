@@ -164,6 +164,29 @@ its single best server, and the monitor handles failover by switching groups
 to a better server when latency degrades. Real multi-server load balancing
 would require the v2ray-core backend, which lacks REALITY/XTLS support.
 
+## Monitor behaviour
+
+The `v2raya-monitor.service` (started by `v2raya-grouping/install.sh`) runs
+`v2raya-grouping.py monitor --watch --interval 300`. Each cycle it does two
+layers of recovery:
+
+1. **Tunnel liveness** — if `tun0` is gone or v2rayA reports `running=False`,
+   it calls `POST /api/v2ray` to restart v2ray-core. This recovers from the
+   failure mode where v2raya.service is "active" but the xray subprocess has
+   died (observed after a hot failover). After a recovery, the rest of the
+   cycle is skipped.
+
+2. **Per-group failover** — for each enabled group, probes the active server
+   and a sample of alternatives via `/api/httpLatency`. Switches if:
+   - active server timed out, **or**
+   - active latency > `--threshold-ms` (default 2000), **or**
+   - an alternative is at least `--min-improvement-pct` faster (default 30%)
+
+   Switch order is **connect-new-then-disconnect-old**: on the Xray variant,
+   connecting a server into an outbound replaces the previous one, so a
+   pre-emptive disconnect isn't needed (and would fail for the `proxy`
+   default outbound because RoutingA depends on it being non-empty).
+
 ## RoutingA (whitelist)
 
 `v2raya-grouping.py setup` writes these RoutingA rules (whitelist semantics:

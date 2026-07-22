@@ -364,7 +364,63 @@ def cmd_monitor(api: V2rayA, args) -> int:
     return _run_health_check(api, args)
 
 
+def _tun_is_up() -> bool:
+    """Return True if the v2rayA TUN interface exists and is UP."""
+    import subprocess
+    try:
+        r = subprocess.run(["ip", "-o", "link", "show", "tun0"],
+                           capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        # If `ip` is unavailable for some reason, assume up and let the
+        # API-side running check below do the real work.
+        return True
+    if r.returncode != 0:
+        return False
+    # State is reported as `<UP,LOWER_UP>` etc.; if "UP" isn't in the line
+    # the interface is administratively down.
+    return "UP" in r.stdout
+
+
+def _ensure_v2ray_running(api: V2rayA) -> bool:
+    """
+    Detect "v2ray-core died but v2raya is alive" — the TUN interface is gone
+    even though v2raya.service looks fine. Restart v2ray via the API.
+
+    Returns True if (re)started, False if already healthy.
+    """
+    touch = api.get_touch()
+    running = bool(touch.get("running"))
+    tun_up = _tun_is_up()
+    if running and tun_up:
+        return False
+
+    reason = []
+    if not running:
+        reason.append("v2rayA reports running=False")
+    if not tun_up:
+        reason.append("tun0 interface missing")
+    print(f"[tunnel] {'; '.join(reason)} -> restarting v2ray via API")
+    try:
+        # Stop first to clear any half-dead state, then start.
+        try:
+            api.stop_v2ray()
+        except RuntimeError:
+            pass
+        api.start_v2ray()
+        print("[tunnel] restart issued")
+        return True
+    except RuntimeError as e:
+        print(f"[tunnel] restart FAILED: {e}", file=sys.stderr)
+        return False
+
+
 def _run_health_check(api: V2rayA, args) -> int:
+    # 0. Tunnel liveness: recover from "v2ray-core died, v2raya still alive".
+    #    This can happen after a hot failover — skip group checks this cycle.
+    if _ensure_v2ray_running(api):
+        print("[tunnel] just recovered; skipping group checks this cycle")
+        return 0
+
     touch = api.get_touch()
     all_servers = list(collect_subscription_servers(touch))
     connected = get_connected_map(touch)
@@ -450,17 +506,31 @@ def _run_health_check(api: V2rayA, args) -> int:
         if should_switch and best_alt is not None:
             print(f"  -> switching: {reason}")
             if args.dry_run:
-                print(f"[dry-run] would disconnect current and connect {best_alt['name']} ({best_alt_lat}ms)")
+                print(f"[dry-run] would connect {best_alt['name']} ({best_alt_lat}ms) to {ob}")
             else:
+                # Switch order: CONNECT the new server FIRST, then disconnect
+                # the old one. On the Xray backend, connecting a server into
+                # an outbound replaces the previous one, so the old is already
+                # gone. Calling disconnect first fails for the `proxy` default
+                # outbound because RoutingA depends on it being non-empty.
                 try:
-                    api.disconnect({"_type": "subscriptionServer",
-                                    "id": current["server_id"],
-                                    "sub": current["sub_index"],
-                                    "outbound": ob})
                     api.connect({"_type": "subscriptionServer",
                                  "id": best_alt["server_id"],
                                  "sub": best_alt["sub_index"],
                                  "outbound": ob})
+                    # If the old server is still connected (rare on Xray but
+                    # possible on v2ray-core variant), disconnect it now.
+                    # Failure here is non-fatal — the connect already succeeded.
+                    if (current["sub_index"], current["server_id"]) != \
+                       (best_alt["sub_index"], best_alt["server_id"]):
+                        try:
+                            api.disconnect({"_type": "subscriptionServer",
+                                            "id": current["server_id"],
+                                            "sub": current["sub_index"],
+                                            "outbound": ob})
+                        except RuntimeError as e:
+                            # Log but don't treat as error: connect won.
+                            print(f"  (disconnect of old server ignored: {e})")
                     print(f"  switched to {best_alt['name']} ({best_alt_lat}ms)")
                     actions.append((ob, current["name"], best_alt["name"], reason))
                 except RuntimeError as e:
